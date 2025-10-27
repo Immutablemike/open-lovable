@@ -10,6 +10,7 @@ import { executeSearchPlan, formatSearchResultsForAI, selectTargetFile } from '@
 import { FileManifest } from '@/types/file-manifest';
 import type { ConversationState, ConversationMessage, ConversationEdit } from '@/types/conversation';
 import { appConfig } from '@/config/app.config';
+import { trackWebsiteClone } from '@/lib/simple-database';
 
 // Force dynamic route to enable streaming
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,22 @@ const googleGenerativeAI = createGoogleGenerativeAI({
 const openai = createOpenAI({
   apiKey: process.env.AI_GATEWAY_API_KEY ?? process.env.OPENAI_API_KEY,
   baseURL: isUsingAIGateway ? aiGatewayBaseURL : process.env.OPENAI_BASE_URL,
+});
+
+// Local AI providers
+const ollama = createOpenAI({
+  apiKey: 'ollama', // API key is ignored but required
+  baseURL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
+});
+
+const vllm = createOpenAI({
+  apiKey: 'vllm', // API key is ignored but required  
+  baseURL: process.env.VLLM_BASE_URL || 'http://localhost:8000/v1',
+});
+
+const lmstudio = createOpenAI({
+  apiKey: 'lmstudio', // API key is ignored but required
+  baseURL: process.env.LMSTUDIO_BASE_URL || 'http://localhost:1234/v1', 
 });
 
 // Helper function to analyze user preferences from conversation history
@@ -89,11 +106,27 @@ declare global {
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  let generatedCode = '';
+  let websiteUrl = '';
+  let modelUsed = '';
+  let status: 'success' | 'error' = 'success';
+  let errorMessage = '';
+
   try {
     const { prompt, model = 'openai/gpt-oss-20b', context, isEdit = false } = await request.json();
     
+    modelUsed = model;
+    
+    // Extract URL from prompt if it contains one
+    const urlMatch = prompt.match(/https?:\/\/[^\s]+/);
+    if (urlMatch) {
+      websiteUrl = urlMatch[0];
+    }
+    
     console.log('[generate-ai-code-stream] Received request:');
     console.log('[generate-ai-code-stream] - prompt:', prompt);
+    console.log('[generate-ai-code-stream] - model:', model);
     console.log('[generate-ai-code-stream] - isEdit:', isEdit);
     console.log('[generate-ai-code-stream] - context.sandboxId:', context?.sandboxId);
     console.log('[generate-ai-code-stream] - context.currentFiles:', context?.currentFiles ? Object.keys(context.currentFiles) : 'none');
@@ -1188,10 +1221,17 @@ CRITICAL: When files are provided in the context:
         const isGoogle = model.startsWith('google/');
         const isOpenAI = model.startsWith('openai/');
         const isKimiGroq = model === 'moonshotai/kimi-k2-instruct-0905';
+        const isOllama = model.startsWith('ollama/');
+        const isVLLM = model.startsWith('vllm/');
+        const isLMStudio = model.startsWith('lmstudio/');
+        
         const modelProvider = isAnthropic ? anthropic : 
                               (isOpenAI ? openai : 
                               (isGoogle ? googleGenerativeAI : 
-                              (isKimiGroq ? groq : groq)));
+                              (isKimiGroq ? groq :
+                              (isOllama ? ollama :
+                              (isVLLM ? vllm :
+                              (isLMStudio ? lmstudio : groq)))))));
         
         // Fix model name transformation for different providers
         let actualModel: string;
@@ -1205,11 +1245,27 @@ CRITICAL: When files are provided in the context:
         } else if (isGoogle) {
           // Google uses specific model names - convert our naming to theirs  
           actualModel = model.replace('google/', '');
+        } else if (isOllama) {
+          // Ollama uses model:tag format
+          actualModel = model.replace('ollama/', '');
+        } else if (isVLLM) {
+          // vLLM uses HuggingFace model paths
+          actualModel = model.replace('vllm/', '');
+        } else if (isLMStudio) {
+          // LM Studio uses model names
+          actualModel = model.replace('lmstudio/', '');
         } else {
           actualModel = model;
         }
 
-        console.log(`[generate-ai-code-stream] Using provider: ${isAnthropic ? 'Anthropic' : isGoogle ? 'Google' : isOpenAI ? 'OpenAI' : 'Groq'}, model: ${actualModel}`);
+        const providerName = isAnthropic ? 'Anthropic' : 
+                            isGoogle ? 'Google' : 
+                            isOpenAI ? 'OpenAI' :
+                            isOllama ? 'Ollama' :
+                            isVLLM ? 'vLLM' :
+                            isLMStudio ? 'LM Studio' : 'Groq';
+        
+        console.log(`[generate-ai-code-stream] Using provider: ${providerName}, model: ${actualModel}`);
         console.log(`[generate-ai-code-stream] AI Gateway enabled: ${isUsingAIGateway}`);
         console.log(`[generate-ai-code-stream] Model string: ${model}`);
 
@@ -1823,6 +1879,10 @@ Provide the complete file content without any truncation. Include all necessary 
       } catch (error) {
         console.error('[generate-ai-code-stream] Stream processing error:', error);
         
+        // Update tracking variables for error case
+        status = 'error';
+        errorMessage = (error as Error).message;
+        
         // Check if it's a tool validation error
         if ((error as any).message?.includes('tool call validation failed')) {
           console.error('[generate-ai-code-stream] Tool call validation error - this may be due to the AI model sending incorrect parameters');
@@ -1839,6 +1899,25 @@ Provide the complete file content without any truncation. Include all necessary 
         }
       } finally {
         await writer.close();
+        
+        // Track the generation attempt in the database
+        try {
+          if (websiteUrl && modelUsed && generatedCode) {
+            const generationTime = Date.now() - startTime;
+            const attemptId = await trackWebsiteClone(
+              websiteUrl,
+              modelUsed,
+              generatedCode,
+              generationTime,
+              status,
+              errorMessage
+            );
+            console.log(`[generate-ai-code-stream] Tracked clone attempt ${attemptId} for ${websiteUrl} using ${modelUsed}`);
+          }
+        } catch (dbError) {
+          console.error('[generate-ai-code-stream] Database tracking error:', dbError);
+          // Don't fail the main request due to tracking issues
+        }
       }
     })();
     
@@ -1859,6 +1938,24 @@ Provide the complete file content without any truncation. Include all necessary 
     
   } catch (error) {
     console.error('[generate-ai-code-stream] Error:', error);
+    
+    // Track the failed attempt
+    try {
+      if (websiteUrl && modelUsed) {
+        const generationTime = Date.now() - startTime;
+        await trackWebsiteClone(
+          websiteUrl,
+          modelUsed,
+          generatedCode,
+          generationTime,
+          'error',
+          (error as Error).message
+        );
+      }
+    } catch (dbError) {
+      console.error('[generate-ai-code-stream] Database tracking error:', dbError);
+    }
+    
     return NextResponse.json({ 
       success: false, 
       error: (error as Error).message 

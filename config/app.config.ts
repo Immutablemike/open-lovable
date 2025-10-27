@@ -58,7 +58,15 @@ export const appConfig = {
       'openai/gpt-5',
       'moonshotai/kimi-k2-instruct-0905',
       'anthropic/claude-sonnet-4-20250514',
-      'google/gemini-2.0-flash-exp'
+      'google/gemini-2.0-flash-exp',
+      // Local models
+      'ollama/llama3.2:7b',
+      'ollama/deepseek-coder:6.7b',
+      'ollama/codellama:7b',
+      'vllm/meta-llama/CodeLlama-7b-Instruct-hf',
+      'vllm/deepseek-ai/deepseek-coder-6.7b-instruct',
+      'lmstudio/gpt-oss-20b',
+      'lmstudio/deepseek-coder-v2-lite'
     ],
     
     // Model display names
@@ -66,7 +74,15 @@ export const appConfig = {
       'openai/gpt-5': 'GPT-5',
       'moonshotai/kimi-k2-instruct-0905': 'Kimi K2 (Groq)',
       'anthropic/claude-sonnet-4-20250514': 'Sonnet 4',
-      'google/gemini-2.0-flash-exp': 'Gemini 2.0 Flash (Experimental)'
+      'google/gemini-2.0-flash-exp': 'Gemini 2.0 Flash (Experimental)',
+      // Local model display names
+      'ollama/llama3.2:7b': 'Llama 3.2 7B (Ollama)',
+      'ollama/deepseek-coder:6.7b': 'DeepSeek Coder 6.7B (Ollama)',
+      'ollama/codellama:7b': 'Code Llama 7B (Ollama)',
+      'vllm/meta-llama/CodeLlama-7b-Instruct-hf': 'Code Llama 7B (vLLM)',
+      'vllm/deepseek-ai/deepseek-coder-6.7b-instruct': 'DeepSeek Coder 6.7B (vLLM)',
+      'lmstudio/gpt-oss-20b': 'GPT-OSS 20B (LM Studio)',
+      'lmstudio/deepseek-coder-v2-lite': 'DeepSeek Coder V2 Lite (LM Studio)'
     } as Record<string, string>,
     
     // Model API configuration
@@ -74,6 +90,42 @@ export const appConfig = {
       'moonshotai/kimi-k2-instruct-0905': {
         provider: 'groq',
         model: 'moonshotai/kimi-k2-instruct-0905'
+      },
+      // Local model configurations
+      'ollama/llama3.2:7b': {
+        provider: 'ollama',
+        model: 'llama3.2:7b',
+        baseURL: 'http://localhost:11434/v1'
+      },
+      'ollama/deepseek-coder:6.7b': {
+        provider: 'ollama', 
+        model: 'deepseek-coder:6.7b',
+        baseURL: 'http://localhost:11434/v1'
+      },
+      'ollama/codellama:7b': {
+        provider: 'ollama',
+        model: 'codellama:7b',
+        baseURL: 'http://localhost:11434/v1'
+      },
+      'vllm/meta-llama/CodeLlama-7b-Instruct-hf': {
+        provider: 'vllm',
+        model: 'meta-llama/CodeLlama-7b-Instruct-hf',
+        baseURL: 'http://localhost:8000/v1'
+      },
+      'vllm/deepseek-ai/deepseek-coder-6.7b-instruct': {
+        provider: 'vllm',
+        model: 'deepseek-ai/deepseek-coder-6.7b-instruct',
+        baseURL: 'http://localhost:8000/v1'
+      },
+      'lmstudio/gpt-oss-20b': {
+        provider: 'lmstudio',
+        model: 'gpt-oss-20b',
+        baseURL: 'http://localhost:1234/v1'
+      },
+      'lmstudio/deepseek-coder-v2-lite': {
+        provider: 'lmstudio',
+        model: 'deepseek-coder-v2-lite',
+        baseURL: 'http://localhost:1234/v1'
       }
     },
     
@@ -85,6 +137,54 @@ export const appConfig = {
     
     // Max tokens for truncation recovery
     truncationRecoveryMaxTokens: 4000,
+  },
+  
+  // Local AI Configuration
+  localAI: {
+    // Ollama configuration
+    ollama: {
+      enabled: false, // Set via environment variable OLLAMA_ENABLED=true
+      baseURL: 'http://localhost:11434/v1', // Override with OLLAMA_BASE_URL
+      // Recommended models for code generation
+      recommendedModels: [
+        'llama3.2:7b',
+        'deepseek-coder:6.7b', 
+        'codellama:7b',
+        'codegemma:7b',
+        'qwen2.5-coder:7b'
+      ],
+      // Minimum model requirements
+      minimumModelSize: '3B',
+      recommendedModelSize: '7B+'
+    },
+    
+    // vLLM configuration
+    vllm: {
+      enabled: false, // Set via environment variable VLLM_ENABLED=true
+      baseURL: 'http://localhost:8000/v1', // Override with VLLM_BASE_URL
+      recommendedModels: [
+        'meta-llama/CodeLlama-7b-Instruct-hf',
+        'deepseek-ai/deepseek-coder-6.7b-instruct',
+        'Qwen/Qwen2.5-Coder-7B-Instruct',
+        'microsoft/DialoGPT-medium'
+      ],
+      minimumModelSize: '7B',
+      recommendedModelSize: '13B+'
+    },
+    
+    // LM Studio configuration
+    lmstudio: {
+      enabled: false, // Set via environment variable LMSTUDIO_ENABLED=true
+      baseURL: 'http://localhost:1234/v1', // Override with LMSTUDIO_BASE_URL
+      recommendedModels: [
+        'gpt-oss-20b',
+        'deepseek-coder-v2-lite',
+        'codellama-7b-instruct',
+        'qwen2.5-coder-7b-instruct'
+      ],
+      minimumModelSize: '3B',
+      recommendedModelSize: '7B+'
+    }
   },
   
   // Code Application Configuration
